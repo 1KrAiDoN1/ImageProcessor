@@ -11,21 +11,25 @@ import (
 )
 
 const (
-	configPath     = "internal/config/config.yaml"
+	configPath     = "backend/internal/config/config.yaml"
 	dbPasswordPath = "DB_PASSWORD"
 )
 
 func main() {
 	ctx := context.Background()
 	log := zaplogger.SetupLoggerWithLevel(zapcore.DebugLevel)
-	log.Info("Service started")
+	log.Info("API Service started")
 	config, err := config.LoadServiceConfig(log, configPath, dbPasswordPath)
 	if err != nil {
-		log.Error("Failed to load service config", zaplogger.Err(err))
+		log.Error("Failed to load API service config", zaplogger.Err(err))
 		os.Exit(1)
 	}
-
-	if err := app.Run(ctx, log, config); err != nil {
+	app, err := app.NewApp(ctx, config, log)
+	if err != nil {
+		log.Error("Failed to create application service", zaplogger.Err(err))
+		os.Exit(1)
+	}
+	if err := app.Run(); err != nil {
 		log.Error("Failed to Run application service", zaplogger.Err(err))
 		os.Exit(1)
 	}

@@ -3,10 +3,14 @@ package app
 import (
 	"context"
 	"fmt"
+	"imageprocessor/backend/internal/broker/kafka"
 	"imageprocessor/backend/internal/config"
 	httpserver "imageprocessor/backend/internal/http-server"
 	"imageprocessor/backend/internal/http-server/handler"
+	"imageprocessor/backend/internal/repository/cloud/s3"
 	"imageprocessor/backend/internal/repository/postgres"
+	imageservice "imageprocessor/backend/internal/service/image_service"
+	statsservice "imageprocessor/backend/internal/service/stats_service"
 
 	"os"
 	"os/signal"
@@ -32,22 +36,45 @@ func NewApp(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*A
 	}
 	log.Info("Connected to database", zap.String("dsn", cfg.DbConfig.DBConn))
 
-	dbpool := storage.GetPool()
+	dbPool := storage.GetPool()
 	defer func() {
 		log.Info("Closing database connection...")
-		dbpool.Close()
+		dbPool.Close()
 		log.Info("Database connection closed")
 	}()
 
-	s3Client := cloud.NewCloudStorage(ctx, cfg.)
-	imageRepo := postgres.NewImageRepository(dbpool)
-	statsRepo := postgres.NewStatisticsRepository(dbpool)
+	s3Client, err := s3.NewS3CloudStorage(context.Background(), cfg.CloudStorageConfig, log)
+	if err != nil {
+		log.Fatal("Failed to initialize S3 client", zap.Error(err))
+	}
+	log.Info("S3 client initialized")
 
-	// Initialize services
-	imageService := NewImageService(imageRepo, log)
-	statisticsService := NewStatisticsService(statsRepo, log)
+	// Инициализация Kafka producer
+	kafkaProducer := kafka.NewProducer(cfg.BrokerConfig, log)
+	defer kafkaProducer.Close()
 
-	handlers := handler.NewHandler(log, imageService, statisticsService)
+	// Проверка и создание топика Kafka
+	if err := kafka.EnsureTopicExists(cfg.BrokerConfig, log); err != nil {
+		log.Warn("Failed to ensure Kafka topic exists", zap.Error(err))
+	}
+
+	// Инициализация репозиториев
+	imageRepo := postgres.NewImageRepository(dbPool, log)
+	statsRepo := postgres.NewStatisticsRepository(dbPool, log)
+
+	// Инициализация сервисов
+	imageService := imageservice.NewImageService(
+		imageRepo,
+		s3Client,
+		kafkaProducer,
+		log,
+		cfg.CloudStorageConfig.Bucket,
+	)
+
+	statsService := statsservice.NewStatsService(statsRepo, log)
+
+	// Инициализация хэндлеров
+	handlers := handler.NewHandler(log, imageService, statsService)
 
 	server := httpserver.NewServer(log, cfg, handlers)
 	return &App{

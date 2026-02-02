@@ -4,32 +4,70 @@ import (
 	"time"
 )
 
-// Image представляет изображение в системе
 type Image struct {
-	ID              string
-	OriginalName    string
-	StoragePath     string
-	ContentType     string
-	Size            int64
-	Width           int
-	Height          int
-	Format          string
-	UploadedAt      time.Time
-	LastModifiedAt  time.Time
-	IsProcessed     bool
-	ProcessingError string
-	Tags            []string
+	ID               string
+	OriginalFilename string
+	OriginalSize     int64
+	MimeType         string
+	Status           ImageStatus
+	OriginalPath     string
+	Bucket           string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
-// ProcessedImage представляет обработанное изображение
 type ProcessedImage struct {
-	ID              string
-	OriginalImageID string
-	OperationType   string
-	StoragePath     string
-	ContentType     string
-	Size            int64
-	Width           int
-	Height          int
-	ProcessedAt     time.Time
+	ID         string
+	ImageID    string
+	Operation  OperationType
+	Parameters string
+	Path       string
+	Size       int64
+	MimeType   string
+	Format     ImageFormat
+	Status     string
+	CreatedAt  time.Time
+}
+
+type ImageStatus string
+
+const (
+	StatusUploaded   ImageStatus = "uploaded"
+	StatusProcessing ImageStatus = "processing"
+	StatusCompleted  ImageStatus = "completed"
+	StatusFailed     ImageStatus = "failed"
+	StatusDeleted    ImageStatus = "deleted"
+)
+
+type OperationType string
+
+const (
+	OpResize    OperationType = "resize"
+	OpThumbnail OperationType = "thumbnail"
+	OpWatermark OperationType = "watermark"
+	OpCrop      OperationType = "crop"
+	OpRotate    OperationType = "rotate"
+	OpFlip      OperationType = "flip"
+	OpGrayscale OperationType = "grayscale"
+)
+
+type ImageFormat string
+
+const (
+	FormatJPEG ImageFormat = "jpeg"
+	FormatJPG  ImageFormat = "jpg"
+	FormatPNG  ImageFormat = "png"
+	FormatGIF  ImageFormat = "gif"
+	FormatWebP ImageFormat = "webp"
+	FormatBMP  ImageFormat = "bmp"
+	FormatTIFF ImageFormat = "tiff"
+)
+
+type ImageInfo struct {
+	Width      int
+	Height     int
+	Format     ImageFormat
+	Size       int64
+	ColorSpace string
+	HasAlpha   bool
 }

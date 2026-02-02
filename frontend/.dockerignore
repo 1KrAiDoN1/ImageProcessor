@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+DEVELOPMENT.md
+EXAMPLES.md
+USER_GUIDE.md
+QUICKSTART.md
+.env
+.env.local
+*.md
+

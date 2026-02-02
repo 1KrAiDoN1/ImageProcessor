@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Processor - Обработка изображений</title>
+    <meta name="description" content="Мощный сервис для обработки изображений онлайн. Изменение размера, миниатюры, водяные знаки и многое другое.">
+    <meta name="keywords" content="обработка изображений, resize, thumbnail, watermark, image processing">
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-image"></i>
+                    <span>ImageProcessor</span>
+                </div>
+                <nav class="nav">
+                    <a href="#upload" class="nav-link active" data-section="upload">
+                        <i class="fas fa-upload"></i> Загрузка
+                    </a>
+                    <a href="#gallery" class="nav-link" data-section="gallery">
+                        <i class="fas fa-images"></i> Галерея
+                    </a>
+                    <a href="#stats" class="nav-link" data-section="stats">
+                        <i class="fas fa-chart-bar"></i> Статистика
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="main">
+        <div class="container">
+            <!-- Upload Section -->
+            <section id="upload-section" class="section active">
+                <div class="section-header">
+                    <h1>Загрузить изображение</h1>
+                    <p>Выберите изображение и операции для обработки</p>
+                </div>
+
+                <div class="upload-container">
+                    <!-- Upload Area -->
+                    <div class="upload-area" id="uploadArea">
+                        <div class="upload-icon">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                        </div>
+                        <h3>Перетащите изображение сюда</h3>
+                        <p>или</p>
+                        <button class="btn btn-primary" id="selectFileBtn">
+                            <i class="fas fa-folder-open"></i> Выберите файл
+                        </button>
+                        <input type="file" id="fileInput" accept="image/jpeg,image/jpg,image/png,image/gif,image/webp" hidden>
+                        <p class="upload-info">Поддерживаемые форматы: JPEG, PNG, GIF, WebP (до 32MB)</p>
+                    </div>
+
+                    <!-- Preview Area -->
+                    <div class="preview-area hidden" id="previewArea">
+                        <div class="preview-image-container">
+                            <img id="previewImage" alt="Preview">
+                            <button class="btn-close" id="removeImageBtn">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                        <div class="image-info">
+                            <h4 id="imageName"></h4>
+                            <p id="imageSize"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Operations Panel -->
+                <div class="operations-panel hidden" id="operationsPanel">
+                    <h3>Выберите операции</h3>
+                    <div class="operations-grid">
+                        <!-- Thumbnail -->
+                        <div class="operation-card">
+                            <input type="checkbox" id="opThumbnail" class="operation-checkbox">
+                            <label for="opThumbnail" class="operation-label">
+                                <div class="operation-icon">
+                                    <i class="fas fa-compress"></i>
+                                </div>
+                                <h4>Миниатюра</h4>
+                                <p>Создать превью 200x200</p>
+                            </label>
+                            <div class="operation-params hidden" id="thumbnailParams">
+                                <div class="param-group">
+                                    <label>Размер (px)</label>
+                                    <input type="number" id="thumbnailSize" value="200" min="50" max="1000">
+                                </div>
+                                <div class="param-group">
+                                    <label>
+                                        <input type="checkbox" id="thumbnailCrop" checked>
+                                        Обрезать по размеру
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resize -->
+                        <div class="operation-card">
+                            <input type="checkbox" id="opResize" class="operation-checkbox">
+                            <label for="opResize" class="operation-label">
+                                <div class="operation-icon">
+                                    <i class="fas fa-expand-arrows-alt"></i>
+                                </div>
+                                <h4>Изменить размер</h4>
+                                <p>Масштабировать изображение</p>
+                            </label>
+                            <div class="operation-params hidden" id="resizeParams">
+                                <div class="param-group">
+                                    <label>Ширина (px)</label>
+                                    <input type="number" id="resizeWidth" value="1024" min="1" max="4096">
+                                </div>
+                                <div class="param-group">
+                                    <label>Высота (px)</label>
+                                    <input type="number" id="resizeHeight" value="768" min="1" max="4096">
+                                </div>
+                                <div class="param-group">
+                                    <label>
+                                        <input type="checkbox" id="resizeKeepAspect" checked>
+                                        Сохранить пропорции
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Watermark -->
+                        <div class="operation-card">
+                            <input type="checkbox" id="opWatermark" class="operation-checkbox">
+                            <label for="opWatermark" class="operation-label">
+                                <div class="operation-icon">
+                                    <i class="fas fa-copyright"></i>
+                                </div>
+                                <h4>Водяной знак</h4>
+                                <p>Добавить текст на изображение</p>
+                            </label>
+                            <div class="operation-params hidden" id="watermarkParams">
+                                <div class="param-group">
+                                    <label>Текст</label>
+                                    <input type="text" id="watermarkText" value="© ImageProcessor" maxlength="50">
+                                </div>
+                                <div class="param-group">
+                                    <label>Прозрачность</label>
+                                    <input type="range" id="watermarkOpacity" min="0" max="1" step="0.1" value="0.5">
+                                    <span id="opacityValue">0.5</span>
+                                </div>
+                                <div class="param-group">
+                                    <label>Позиция</label>
+                                    <select id="watermarkPosition">
+                                        <option value="top-left">Верх слева</option>
+                                        <option value="top-right">Верх справа</option>
+                                        <option value="top-center">Верх центр</option>
+                                        <option value="bottom-left">Низ слева</option>
+                                        <option value="bottom-right" selected>Низ справа</option>
+                                        <option value="bottom-center">Низ центр</option>
+                                        <option value="center">Центр</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="upload-actions">
+                        <button class="btn btn-success btn-large" id="uploadBtn">
+                            <i class="fas fa-rocket"></i> Обработать изображение
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Section -->
+                <div class="progress-section hidden" id="progressSection">
+                    <div class="progress-card">
+                        <h3>Обработка изображения</h3>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <p class="progress-text" id="progressText">Загрузка...</p>
+                        <div class="progress-info">
+                            <span id="progressPercentage">0%</span>
+                            <span id="progressStatus">pending</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Section -->
+                <div class="results-section hidden" id="resultsSection">
+                    <div class="results-header">
+                        <h3>Результаты обработки</h3>
+                        <button class="btn btn-secondary" id="newUploadBtn">
+                            <i class="fas fa-plus"></i> Загрузить еще
+                        </button>
+                    </div>
+                    <div class="results-grid" id="resultsGrid"></div>
+                </div>
+            </section>
+
+            <!-- Gallery Section -->
+            <section id="gallery-section" class="section">
+                <div class="section-header">
+                    <h1>Галерея изображений</h1>
+                    <p>Все загруженные и обработанные изображения</p>
+                </div>
+
+                <div class="gallery-filters">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="searchInput" placeholder="Поиск по имени файла...">
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-btn active" data-filter="all">Все</button>
+                        <button class="filter-btn" data-filter="completed">Завершенные</button>
+                        <button class="filter-btn" data-filter="processing">В обработке</button>
+                        <button class="filter-btn" data-filter="failed">Ошибки</button>
+                    </div>
+                </div>
+
+                <div class="gallery-grid" id="galleryGrid">
+                    <div class="loading-spinner">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        <p>Загрузка изображений...</p>
+                    </div>
+                </div>
+
+                <div class="pagination" id="pagination"></div>
+            </section>
+
+            <!-- Statistics Section -->
+            <section id="stats-section" class="section">
+                <div class="section-header">
+                    <h1>Статистика</h1>
+                    <p>Информация об обработке изображений</p>
+                </div>
+
+                <div class="stats-grid" id="statsGrid">
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                            <i class="fas fa-upload"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="statUploaded">0</h3>
+                            <p>Загружено</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                            <i class="fas fa-check-circle"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="statProcessed">0</h3>
+                            <p>Обработано</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                            <i class="fas fa-database"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="statSize">0 MB</h3>
+                            <p>Объем данных</p>
+                        </div>
+                    </div>
+
+                    <div class="stat-card">
+                        <div class="stat-icon" style="background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);">
+                            <i class="fas fa-clock"></i>
+                        </div>
+                        <div class="stat-content">
+                            <h3 id="statAvgTime">0 ms</h3>
+                            <p>Среднее время</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="operations-stats">
+                    <h3>Статистика по операциям</h3>
+                    <div class="operations-table" id="operationsTable"></div>
+                </div>
+
+                <button class="btn btn-secondary" id="refreshStatsBtn">
+                    <i class="fas fa-sync-alt"></i> Обновить статистику
+                </button>
+            </section>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2026 ImageProcessor. Все права защищены.</p>
+            <div class="footer-links">
+                <a href="#"><i class="fab fa-github"></i></a>
+                <a href="#"><i class="fab fa-twitter"></i></a>
+                <a href="#"><i class="fab fa-linkedin"></i></a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Modal for Image View -->
+    <div class="modal hidden" id="imageModal">
+        <div class="modal-overlay" id="modalOverlay"></div>
+        <div class="modal-content">
+            <button class="modal-close" id="modalClose">
+                <i class="fas fa-times"></i>
+            </button>
+            <img id="modalImage" alt="Full size">
+            <div class="modal-actions">
+                <a id="downloadLink" class="btn btn-primary" download>
+                    <i class="fas fa-download"></i> Скачать
+                </a>
+                <button class="btn btn-danger" id="deleteImageBtn">
+                    <i class="fas fa-trash"></i> Удалить
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/config.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/ui.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
+

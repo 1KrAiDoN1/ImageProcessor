@@ -2,84 +2,186 @@ package kafka
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"imageprocessor/backend/internal/config"
+	"imageprocessor/backend/internal/domain/entity"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
 )
 
-type KafkaConsumer struct {
-	Conn   *kafka.Conn
+type Consumer struct {
 	reader *kafka.Reader
-	log    *zap.Logger
+	logger *zap.Logger
 }
 
-func NewKafkaConsumer(log *zap.Logger, cfg config.KafkaConfig) *KafkaConsumer {
-	var conn *kafka.Conn
-	var err error
+// NewConsumer создает нового Kafka consumer
+func NewConsumer(cfg config.BrokerConfig, logger *zap.Logger) *Consumer {
+	reader := kafka.NewReader(kafka.ReaderConfig{
+		Brokers:           cfg.Brokers,
+		Topic:             cfg.Topic,
+		GroupID:           cfg.ConsumerGroup,
+		MinBytes:          cfg.FetchMinBytes,
+		MaxBytes:          cfg.FetchMaxBytes,
+		CommitInterval:    cfg.CommitInterval,
+		SessionTimeout:    cfg.SessionTimeout,
+		HeartbeatInterval: cfg.HeartbeatInterval,
+		RebalanceTimeout:  cfg.RebalanceTimeout,
+		StartOffset:       kafka.LastOffset,
+		MaxWait:           1 * time.Second,
+	})
 
-	maxRetries := 5
-	initialBackoff := 2 * time.Second
-	maxBackoff := 30 * time.Second
+	logger.Info("Kafka consumer initialized",
+		zap.Strings("brokers", cfg.Brokers),
+		zap.String("topic", cfg.Topic),
+		zap.String("groupId", cfg.ConsumerGroup),
+	)
 
-	currentBackoff := initialBackoff
+	return &Consumer{
+		reader: reader,
+		logger: logger,
+	}
+}
 
-	for attempt := 1; attempt <= maxRetries; attempt++ {
+// Start начинает чтение сообщений из Kafka
+func (c *Consumer) Start(ctx context.Context, handler func(ctx context.Context, task *entity.ProcessingTask) error) error {
+	c.logger.Info("Starting Kafka consumer")
 
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Info("Consumer stopped by context")
+			return ctx.Err()
+		default:
+			// Читаем сообщение
+			message, err := c.reader.FetchMessage(ctx)
+			if err != nil {
+				if err == context.Canceled {
+					c.logger.Info("Consumer stopped")
+					return nil
+				}
+				c.logger.Error("Failed to fetch message", zap.Error(err))
+				time.Sleep(1 * time.Second)
+				continue
+			}
 
-		conn, err = kafka.DialLeader(ctx, "tcp", cfg.Brokers[0], cfg.Topic, 0)
-		if err == nil {
-			log.Info("Успешно подключено к Kafka")
-			conn.Close()
-			break
-		}
+			c.logger.Debug("Message received",
+				zap.String("topic", message.Topic),
+				zap.Int("partition", message.Partition),
+				zap.Int64("offset", message.Offset),
+			)
 
-		if attempt < maxRetries {
-			log.Warn("Не удалось подключиться к Kafka, повторная попытка...", zap.Int("attempt", attempt), zap.Error(err))
-			time.Sleep(currentBackoff)
-			currentBackoff *= 2
-			if currentBackoff > maxBackoff {
-				currentBackoff = maxBackoff
+			// Обрабатываем сообщение
+			if err := c.processMessage(ctx, message, handler); err != nil {
+				c.logger.Error("Failed to process message",
+					zap.Error(err),
+					zap.Int64("offset", message.Offset),
+				)
+				// Не коммитим сообщение при ошибке
+				continue
+			}
+
+			// Коммитим сообщение
+			if err := c.reader.CommitMessages(ctx, message); err != nil {
+				c.logger.Error("Failed to commit message",
+					zap.Error(err),
+					zap.Int64("offset", message.Offset),
+				)
 			}
 		}
 	}
+}
+
+// processMessage обрабатывает одно сообщение
+func (c *Consumer) processMessage(ctx context.Context, message kafka.Message, handler func(ctx context.Context, task *entity.ProcessingTask) error) error {
+	// Десериализуем задачу
+	var task entity.ProcessingTask
+	if err := json.Unmarshal(message.Value, &task); err != nil {
+		c.logger.Error("Failed to unmarshal task", zap.Error(err))
+		return fmt.Errorf("failed to unmarshal task: %w", err)
+	}
+
+	c.logger.Info("Processing task",
+		zap.String("taskId", task.ID),
+		zap.String("imageId", task.ImageID),
+		zap.Int("operationsCount", len(task.Operations)),
+	)
+
+	// Вызываем обработчик
+	startTime := time.Now()
+	err := handler(ctx, &task)
+	duration := time.Since(startTime)
 
 	if err != nil {
-		log.Error("Не удалось подключиться к Kafka после нескольких попыток", zap.Error(err))
-		return nil
+		c.logger.Error("Task processing failed",
+			zap.Error(err),
+			zap.String("taskId", task.ID),
+			zap.Duration("duration", duration),
+		)
+		return err
 	}
 
-	return &KafkaConsumer{
-		Conn: conn,
-		reader: kafka.NewReader(kafka.ReaderConfig{
-			Brokers:          cfg.Brokers,
-			Topic:            cfg.Topic,
-			MinBytes:         1,
-			MaxBytes:         10e4,
-			CommitInterval:   time.Second,
-			StartOffset:      kafka.LastOffset,
-			ReadBatchTimeout: 100 * time.Millisecond,
-		}),
-		log: log,
+	c.logger.Info("Task processed successfully",
+		zap.String("taskId", task.ID),
+		zap.String("imageId", task.ImageID),
+		zap.Duration("duration", duration),
+	)
+
+	return nil
+}
+
+// ReadBatch читает пакет сообщений
+func (c *Consumer) ReadBatch(ctx context.Context, maxMessages int) ([]*entity.ProcessingTask, error) {
+	tasks := make([]*entity.ProcessingTask, 0, maxMessages)
+
+	for i := 0; i < maxMessages; i++ {
+		// Используем контекст с таймаутом для неблокирующего чтения
+		readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		message, err := c.reader.FetchMessage(readCtx)
+		cancel()
+
+		if err != nil {
+			if err == context.DeadlineExceeded {
+				// Нет больше сообщений, возвращаем что есть
+				break
+			}
+			c.logger.Error("Failed to fetch message", zap.Error(err))
+			return tasks, err
+		}
+
+		// Десериализуем задачу
+		var task entity.ProcessingTask
+		if err := json.Unmarshal(message.Value, &task); err != nil {
+			c.logger.Error("Failed to unmarshal task", zap.Error(err))
+			continue
+		}
+
+		tasks = append(tasks, &task)
+
+		// Коммитим сообщение
+		if err := c.reader.CommitMessages(ctx, message); err != nil {
+			c.logger.Error("Failed to commit message", zap.Error(err))
+		}
 	}
+
+	return tasks, nil
 }
 
-func (kc *KafkaConsumer) ReadMessage(ctx context.Context) (*kafka.Message, error) {
-	kafkaMessage, err := kc.reader.ReadMessage(ctx)
-	if err != nil {
-		kc.log.Error("Failed to read message", zap.String("status", "error"), zap.Error(err))
-		return nil, err
+// Close закрывает consumer
+func (c *Consumer) Close() error {
+	c.logger.Info("Closing Kafka consumer")
+	if err := c.reader.Close(); err != nil {
+		c.logger.Error("Failed to close Kafka consumer", zap.Error(err))
+		return err
 	}
-	return &kafkaMessage, nil
+	return nil
 }
 
-func (kc *KafkaConsumer) CommitMessage(ctx context.Context, msg *kafka.Message) error {
-	return kc.reader.CommitMessages(ctx, *msg)
-}
-
-func (kc *KafkaConsumer) Close() error {
-	return kc.reader.Close()
+// Stats возвращает статистику consumer
+func (c *Consumer) Stats() (int64, int64) {
+	msg := c.reader.Stats().Messages
+	byt := c.reader.Stats().Bytes
+	return msg, byt
 }

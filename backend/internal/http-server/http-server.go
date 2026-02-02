@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
@@ -69,10 +70,27 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 func (s *Server) setupRoutes() {
+	// CORS middleware для работы с frontend
+	s.router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+	}))
+
+	// Health check endpoint
+	s.router.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":    "healthy",
+			"service":   "image-processor-api",
+			"timestamp": time.Now().UTC(),
+		})
+	})
+
+	// API routes
 	api := s.router.Group("/api/v1")
-
 	api.Use(middleware.Logger(s.logger))
-
-	routes.SetupRoutes(api, s.logger, s.handlers)
-
+	routes.SetupRoutes(api, s.handlers, s.logger)
 }

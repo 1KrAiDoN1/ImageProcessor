@@ -1,0 +1,63 @@
+server:
+  address: ":8080"
+  readTimeout: 30s
+  writeTimeout: 30s
+  idleTimeout: 120s
+
+database:
+  driver: "postgres"
+  host: "localhost"
+  port: 5432
+  user: "postgres"
+  dbname: "imageprocessor"
+  maxOpenConns: 25
+  maxIdleConns: 5
+  connMaxLifetime: 300s
+  connMaxIdleTime: 60s
+
+broker:
+  brokers:
+    - "localhost:9092"
+  topic: "image-processing"
+  consumerGroup: "image-processor-workers"
+  sessionTimeout: 30s
+  heartbeatInterval: 3s
+  rebalanceTimeout: 60s
+  maxProcessingTime: 300s
+  fetchMinBytes: 1
+  fetchMaxBytes: 10485760 # 10MB
+  commitInterval: 1s
+
+worker:
+  numWorkers: 5
+  batchSize: 10
+  processingTimeout: 300s
+  retryAttempts: 3
+  retryBackoff: 5s
+
+cloud:
+  endpoint: "localhost:9000"
+  region: "us-east-1"
+  accessKey: "minioadmin"
+  secretKey: "minioadmin"
+  bucket: "images"
+  useSSL: false
+  presignedURLExpiry: 3600s
+  uploadPartSize: 5242880 # 5MB
+  maxUploadSize: 33554432 # 32MB
+
+processing:
+  defaultThumbnailSize: 200
+  defaultJpegQuality: 85
+  maxImageWidth: 4096
+  maxImageHeight: 4096
+  watermarkOpacity: 0.5
+  watermarkFontSize: 24
+  watermarkText: "© ImageProcessor"
+  supportedFormats:
+    - "jpeg"
+    - "jpg"
+    - "png"
+    - "gif"
+    - "webp"
+
