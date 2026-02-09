@@ -7,7 +7,6 @@ import (
 	"image/draw"
 	"imageprocessor/backend/internal/domain/entity"
 
-	"github.com/disintegration/imaging"
 	"github.com/golang/freetype"
 	"github.com/golang/freetype/truetype"
 	"golang.org/x/image/font/gofont/goregular"
@@ -147,26 +146,4 @@ func (o *WatermarkOperation) addTextWatermark(img image.Image, text, position st
 	}
 
 	return rgba, nil
-}
-
-// Альтернативная простая реализация без freetype (на случай проблем)
-func (o *WatermarkOperation) addSimpleWatermark(img image.Image, opacity float64) image.Image {
-	// Создаем копию изображения с наложением полупрозрачного слоя
-	bounds := img.Bounds()
-	rgba := image.NewRGBA(bounds)
-	draw.Draw(rgba, bounds, img, bounds.Min, draw.Src)
-
-	// Добавляем полупрозрачный прямоугольник в правом нижнем углу
-	watermarkBounds := image.Rect(
-		bounds.Dx()-200, bounds.Dy()-50,
-		bounds.Dx()-10, bounds.Dy()-10,
-	)
-
-	alpha := uint8(opacity * 255)
-	watermarkColor := color.RGBA{R: 0, G: 0, B: 0, A: alpha}
-	watermark := image.NewUniform(watermarkColor)
-
-	draw.Draw(rgba, watermarkBounds, watermark, image.Point{}, draw.Over)
-
-	return imaging.Clone(rgba)
 }

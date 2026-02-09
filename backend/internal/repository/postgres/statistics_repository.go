@@ -6,18 +6,15 @@ import (
 	"imageprocessor/backend/internal/domain/entity"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"go.uber.org/zap"
 )
 
 type StatisticsRepository struct {
-	db     *pgxpool.Pool
-	logger *zap.Logger
+	db *pgxpool.Pool
 }
 
-func NewStatisticsRepository(db *pgxpool.Pool, logger *zap.Logger) *StatisticsRepository {
+func NewStatisticsRepository(db *pgxpool.Pool) *StatisticsRepository {
 	return &StatisticsRepository{
-		db:     db,
-		logger: logger,
+		db: db,
 	}
 }
 
@@ -35,7 +32,6 @@ func (r *StatisticsRepository) GetStatistics(ctx context.Context) (*entity.Proce
 		&stats.ID,
 		&stats.TotalImagesUploaded,
 		&stats.TotalImagesProcessed,
-		&stats.TotalDataProcessedBytes,
 		&stats.FailedProcessingAttempts,
 		&stats.TotalDataProcessedBytes,
 		&stats.AverageProcessingTimeMs,
@@ -43,7 +39,6 @@ func (r *StatisticsRepository) GetStatistics(ctx context.Context) (*entity.Proce
 	)
 
 	if err != nil {
-		r.logger.Error("Failed to get statistics", zap.Error(err))
 		return nil, fmt.Errorf("failed to get statistics: %w", err)
 	}
 
@@ -61,7 +56,6 @@ func (r *StatisticsRepository) IncrementImageUploaded(ctx context.Context, size 
 
 	_, err := r.db.Exec(ctx, query, size)
 	if err != nil {
-		r.logger.Error("Failed to increment image uploaded", zap.Error(err))
 		return fmt.Errorf("failed to increment image uploaded: %w", err)
 	}
 
@@ -79,7 +73,6 @@ func (r *StatisticsRepository) IncrementImageProcessed(ctx context.Context, proc
 
 	_, err := r.db.Exec(ctx, query, processingTimeMs)
 	if err != nil {
-		r.logger.Error("Failed to increment image processed", zap.Error(err))
 		return fmt.Errorf("failed to increment image processed: %w", err)
 	}
 
@@ -96,7 +89,6 @@ func (r *StatisticsRepository) IncrementImageFailed(ctx context.Context) error {
 
 	_, err := r.db.Exec(ctx, query)
 	if err != nil {
-		r.logger.Error("Failed to increment image failed", zap.Error(err))
 		return fmt.Errorf("failed to increment image failed: %w", err)
 	}
 
@@ -113,7 +105,6 @@ func (r *StatisticsRepository) GetOperationStatistics(ctx context.Context) ([]en
 
 	rows, err := r.db.Query(ctx, query)
 	if err != nil {
-		r.logger.Error("Failed to get operation statistics", zap.Error(err))
 		return nil, fmt.Errorf("failed to get operation statistics: %w", err)
 	}
 	defer rows.Close()
@@ -129,7 +120,6 @@ func (r *StatisticsRepository) GetOperationStatistics(ctx context.Context) ([]en
 			&stat.AverageProcessingTimeMs,
 		)
 		if err != nil {
-			r.logger.Error("Failed to scan operation stat", zap.Error(err))
 			return nil, fmt.Errorf("failed to scan operation stat: %w", err)
 		}
 		stats = append(stats, stat)
@@ -161,10 +151,6 @@ func (r *StatisticsRepository) UpdateOperationStatistics(ctx context.Context, op
 
 	_, err := r.db.Exec(ctx, query, operation, successCount, failureCount, processingTimeMs, int64(processingTimeMs))
 	if err != nil {
-		r.logger.Error("Failed to update operation statistics",
-			zap.Error(err),
-			zap.String("operation", string(operation)),
-		)
 		return fmt.Errorf("failed to update operation statistics: %w", err)
 	}
 
@@ -183,7 +169,10 @@ func (r *StatisticsRepository) GetMostUsedOperation(ctx context.Context) (string
 	var operationType string
 	err := r.db.QueryRow(ctx, query).Scan(&operationType)
 	if err != nil {
-		r.logger.Error("Failed to get most used operation", zap.Error(err))
+		// Если нет данных - это нормально, возвращаем пустую строку
+		if err.Error() == "no rows in result set" {
+			return "none", nil
+		}
 		return "", fmt.Errorf("failed to get most used operation: %w", err)
 	}
 

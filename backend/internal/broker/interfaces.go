@@ -11,3 +11,9 @@ type ConsumerMessageBrokerInterface interface {
 	Stats() (int64, int64)
 	Close() error
 }
+
+type ProducerMessageBrokerInterface interface {
+	PublishProcessingTask(ctx context.Context, task *entity.ProcessingTask) error
+	PublishBatch(ctx context.Context, tasks []*entity.ProcessingTask) error
+	Close() error
+}

@@ -26,8 +26,6 @@ type App struct {
 }
 
 func NewApp(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*App, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	storage, err := postgres.NewDatabase(ctx, cfg.DbConfig.DBConn)
 	if err != nil {
@@ -37,21 +35,16 @@ func NewApp(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*A
 	log.Info("Connected to database", zap.String("dsn", cfg.DbConfig.DBConn))
 
 	dbPool := storage.GetPool()
-	defer func() {
-		log.Info("Closing database connection...")
-		dbPool.Close()
-		log.Info("Database connection closed")
-	}()
 
-	s3Client, err := s3.NewS3CloudStorage(context.Background(), cfg.CloudStorageConfig, log)
+	s3Client, err := s3.NewS3CloudStorage(ctx, cfg.CloudStorageConfig)
 	if err != nil {
-		log.Fatal("Failed to initialize S3 client", zap.Error(err))
+		log.Error("Failed to initialize S3 client", zap.Error(err))
+		return nil, fmt.Errorf("S3 client initialization failed: %w", err)
 	}
 	log.Info("S3 client initialized")
 
 	// Инициализация Kafka producer
 	kafkaProducer := kafka.NewProducer(cfg.BrokerConfig, log)
-	defer kafkaProducer.Close()
 
 	// Проверка и создание топика Kafka
 	if err := kafka.EnsureTopicExists(cfg.BrokerConfig, log); err != nil {
@@ -59,8 +52,8 @@ func NewApp(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*A
 	}
 
 	// Инициализация репозиториев
-	imageRepo := postgres.NewImageRepository(dbPool, log)
-	statsRepo := postgres.NewStatisticsRepository(dbPool, log)
+	imageRepo := postgres.NewImageRepository(dbPool)
+	statsRepo := postgres.NewStatisticsRepository(dbPool)
 
 	// Инициализация сервисов
 	imageService := imageservice.NewImageService(
@@ -84,8 +77,8 @@ func NewApp(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*A
 	}, nil
 }
 
-func (a *App) Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (a *App) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	sigChan := make(chan os.Signal, 1)

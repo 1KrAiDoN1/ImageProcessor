@@ -21,25 +21,19 @@ func SetupRoutes(router *gin.RouterGroup, h *handler.Handler, logger *zap.Logger
 		c.JSON(200, gin.H{"message": "pong"})
 	})
 
-	// API v1
-	v1 := router.Group("/api/v1")
+	images := router.Group("/images")
 	{
-		// Images endpoints
-		images := v1.Group("/images")
-		{
-			images.POST("", h.UploadImage)                 // Загрузка изображения с операциями
-			images.GET("", h.ListImages)                   // Список изображений
-			images.GET("/:id", h.GetImage)                 // Получение изображения
-			images.GET("/:id/status", h.GetImageStatus)    // Статус обработки
-			images.GET("/:id/url", h.GetImagePresignedURL) // Генерация presigned URL
-			images.DELETE("/:id", h.DeleteImage)           // Удаление изображения
-		}
+		images.POST("", h.UploadImage)                 // Загрузка изображения с операциями
+		images.GET("", h.ListImages)                   // Список изображений
+		images.GET("/:id", h.GetImage)                 // Получение изображения
+		images.GET("/:id/status", h.GetImageStatus)    // Статус обработки
+		images.GET("/:id/url", h.GetImagePresignedURL) // Генерация presigned URL
+		images.DELETE("/:id", h.DeleteImage)           // Удаление изображения
+	}
 
-		// Statistics endpoints
-		statistics := v1.Group("/statistics")
-		{
-			statistics.GET("", h.GetStatistics) // Общая статистика
-		}
+	statistics := router.Group("/statistics")
+	{
+		statistics.GET("", h.GetStatistics) // Общая статистика
 	}
 
 	// Версия API

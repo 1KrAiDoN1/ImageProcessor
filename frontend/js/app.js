@@ -305,7 +305,7 @@ async function handleUpload() {
             UI.toggleElement(document.getElementById('progressSection'), false);
             UI.toggleElement(document.getElementById('resultsSection'), true);
             UI.displayResults(currentImageId, operations);
-        }, 1000);
+        }, 200);
         
     } catch (error) {
         console.error('Upload error:', error);
@@ -398,17 +398,36 @@ async function loadStatistics() {
     try {
         const stats = await api.getStatistics();
         
+        console.log('Statistics loaded:', stats); // Debug log
+        
         // Обновить общую статистику
-        document.getElementById('statUploaded').textContent = stats.total_images_uploaded || 0;
-        document.getElementById('statProcessed').textContent = stats.total_images_processed || 0;
-        document.getElementById('statSize').textContent = 
-            (stats.total_data_processed_mb || 0).toFixed(2) + ' MB';
-        document.getElementById('statAvgTime').textContent = 
-            (stats.average_processing_time_ms || 0).toFixed(1) + ' ms';
+        const uploadedEl = document.getElementById('statUploaded');
+        const processedEl = document.getElementById('statProcessed');
+        const sizeEl = document.getElementById('statSize');
+        const avgTimeEl = document.getElementById('statAvgTime');
+        
+        if (uploadedEl) {
+            uploadedEl.textContent = stats.total_images_uploaded || 0;
+        }
+        if (processedEl) {
+            processedEl.textContent = stats.total_images_processed || 0;
+        }
+        if (sizeEl) {
+            // Используем total_data_processed_mb, если есть, иначе вычисляем из bytes
+            const sizeMB = stats.total_data_processed_mb !== undefined 
+                ? stats.total_data_processed_mb 
+                : (stats.total_data_processed_bytes || 0) / (1024 * 1024);
+            sizeEl.textContent = sizeMB.toFixed(2) + ' MB';
+        }
+        if (avgTimeEl) {
+            avgTimeEl.textContent = (stats.average_processing_time_ms || 0).toFixed(1) + ' ms';
+        }
         
         // Обновить статистику по операциям
         const operationsTable = document.getElementById('operationsTable');
-        operationsTable.innerHTML = UI.createOperationsTable(stats.operation_statistics);
+        if (operationsTable && stats.operation_statistics) {
+            operationsTable.innerHTML = UI.createOperationsTable(stats.operation_statistics);
+        }
         
     } catch (error) {
         console.error('Load statistics error:', error);
@@ -507,4 +526,3 @@ setInterval(() => {
         loadStatistics();
     }
 }, 30000);
-

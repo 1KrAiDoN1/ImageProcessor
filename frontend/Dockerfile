@@ -1,41 +1,25 @@
-# Frontend Dockerfile - Multi-stage build
-
-# Stage 1: Build stage (optional, for minification)
-FROM node:18-alpine AS build
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install dependencies (if needed for build tools)
-RUN npm install --only=production || true
-
-# Copy all frontend files
-COPY . .
-
-# Stage 2: Production stage with Nginx
+# frontend/Dockerfile (самый простой)
 FROM nginx:alpine
 
-# Copy custom nginx configuration
+# Установка curl для health checks
+RUN apk add --no-cache curl
+
+# Копируем конфигурацию nginx
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
-# Copy frontend files to nginx html directory
-COPY --from=build /app /usr/share/nginx/html
+# Копируем статические файлы (HTML, CSS, JS, изображения)
+COPY . /usr/share/nginx/html/
 
-# Remove unnecessary files
-RUN rm -f /usr/share/nginx/html/Dockerfile \
-    /usr/share/nginx/html/nginx.conf \
-    /usr/share/nginx/html/package*.json \
-    /usr/share/nginx/html/.gitignore
-
-# Expose port 80
-EXPOSE 80
+# Устанавливаем корректные права доступа
+RUN chown -R nginx:nginx /usr/share/nginx/html && \
+    chmod -R 755 /usr/share/nginx/html
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --quiet --tries=1 --spider http://localhost/ || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost/health || exit 1
 
-# Start nginx
+# Открываем порт 80
+EXPOSE 80
+
+# Запускаем nginx
 CMD ["nginx", "-g", "daemon off;"]
-

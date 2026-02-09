@@ -344,4 +344,3 @@ const UI = {
         return names[type] || type;
     }
 };
-

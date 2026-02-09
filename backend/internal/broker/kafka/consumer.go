@@ -29,8 +29,8 @@ func NewConsumer(cfg config.BrokerConfig, logger *zap.Logger) *Consumer {
 		SessionTimeout:    cfg.SessionTimeout,
 		HeartbeatInterval: cfg.HeartbeatInterval,
 		RebalanceTimeout:  cfg.RebalanceTimeout,
-		StartOffset:       kafka.LastOffset,
-		MaxWait:           1 * time.Second,
+		StartOffset:       kafka.FirstOffset, // Читать с начала для новой consumer group
+		MaxWait:           500 * time.Millisecond,
 	})
 
 	logger.Info("Kafka consumer initialized",
@@ -55,22 +55,24 @@ func (c *Consumer) Start(ctx context.Context, handler func(ctx context.Context, 
 			c.logger.Info("Consumer stopped by context")
 			return ctx.Err()
 		default:
-			// Читаем сообщение
 			message, err := c.reader.FetchMessage(ctx)
 			if err != nil {
-				if err == context.Canceled {
+				if err == context.Canceled || err == context.DeadlineExceeded {
 					c.logger.Info("Consumer stopped")
 					return nil
 				}
-				c.logger.Error("Failed to fetch message", zap.Error(err))
-				time.Sleep(1 * time.Second)
+				c.logger.Error("Failed to read message",
+					zap.Error(err),
+					zap.String("error_type", fmt.Sprintf("%T", err)),
+				)
 				continue
 			}
 
-			c.logger.Debug("Message received",
+			c.logger.Info("Message received",
 				zap.String("topic", message.Topic),
 				zap.Int("partition", message.Partition),
 				zap.Int64("offset", message.Offset),
+				zap.Int("value_size", len(message.Value)),
 			)
 
 			// Обрабатываем сообщение
@@ -79,14 +81,16 @@ func (c *Consumer) Start(ctx context.Context, handler func(ctx context.Context, 
 					zap.Error(err),
 					zap.Int64("offset", message.Offset),
 				)
-				// Не коммитим сообщение при ошибке
 				continue
 			}
-
-			// Коммитим сообщение
+			// Коммитим только после успешной обработки
 			if err := c.reader.CommitMessages(ctx, message); err != nil {
 				c.logger.Error("Failed to commit message",
 					zap.Error(err),
+					zap.Int64("offset", message.Offset),
+				)
+			} else {
+				c.logger.Info("Message processed and committed",
 					zap.Int64("offset", message.Offset),
 				)
 			}
@@ -138,7 +142,7 @@ func (c *Consumer) ReadBatch(ctx context.Context, maxMessages int) ([]*entity.Pr
 
 	for i := 0; i < maxMessages; i++ {
 		// Используем контекст с таймаутом для неблокирующего чтения
-		readCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+		readCtx, cancel := context.WithTimeout(ctx, 10*time.Millisecond)
 		message, err := c.reader.FetchMessage(readCtx)
 		cancel()
 
@@ -182,6 +186,6 @@ func (c *Consumer) Close() error {
 // Stats возвращает статистику consumer
 func (c *Consumer) Stats() (int64, int64) {
 	msg := c.reader.Stats().Messages
-	byt := c.reader.Stats().Bytes
+	byt := c.reader.Stats().FetchBytes.Sum
 	return msg, byt
 }

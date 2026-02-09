@@ -21,10 +21,3 @@ type ImageRepositoryInterface interface {
 	UpdateProcessingJobStatus(ctx context.Context, jobID string, status string, errorMsg string) error
 	GetProcessingJobByImageID(ctx context.Context, imageID string) (*entity.ProcessingTask, error)
 }
-
-// KafkaProducer определяет интерфейс для отправки сообщений в Kafka
-type KafkaProducer interface {
-	PublishProcessingTask(ctx context.Context, task *entity.ProcessingTask) error
-	PublishBatch(ctx context.Context, tasks []*entity.ProcessingTask) error
-	Close() error
-}

@@ -165,7 +165,10 @@ func DecodeImage(data []byte) (image.Image, entity.ImageFormat, error) {
 	}
 
 	// Сбрасываем reader
-	reader.Seek(0, 0)
+	_, err = reader.Seek(0, 0)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to reset reader: %w", err)
+	}
 
 	// Декодируем изображение
 	img, _, err := image.Decode(reader)

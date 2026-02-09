@@ -27,24 +27,15 @@ type Worker struct {
 	cfg          *config.ServiceConfig
 	log          *zap.Logger
 	consumer     broker.ConsumerMessageBrokerInterface
-	processor    processor.ImageProcessorImpl
+	processor    *processor.ImageProcessorImpl
 	imageRepo    imageservice.ImageRepositoryInterface
 	statsRepo    statsservice.StatsRepositoryInterface
 	cloudStorage cloud.CloudStorageInterface
 	workService  workerServiceInterface
 	numWorkers   int
-	wg           *sync.WaitGroup
-	stopChan     chan struct{}
 }
 
 func NewWorker(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) (*Worker, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	wg := &sync.WaitGroup{}
-
-	stopChan := make(chan struct{})
-
 	storage, err := postgres.NewDatabase(ctx, cfg.DbConfig.DBConn)
 	if err != nil {
 		log.Error("Failed to connect to database", zap.Error(err))
@@ -53,14 +44,9 @@ func NewWorker(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) 
 	log.Info("Connected to database", zap.String("dsn", cfg.DbConfig.DBConn))
 
 	dbpool := storage.GetPool()
-	defer func() {
-		log.Info("Closing database connection...")
-		dbpool.Close()
-		log.Info("Database connection closed")
-	}()
 
 	// Инициализация S3 клиента
-	s3Client, err := s3.NewS3CloudStorage(context.Background(), cfg.CloudStorageConfig, log)
+	s3Client, err := s3.NewS3CloudStorage(ctx, cfg.CloudStorageConfig)
 	if err != nil {
 		log.Fatal("Failed to initialize S3 client", zap.Error(err))
 	}
@@ -68,14 +54,13 @@ func NewWorker(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) 
 
 	// Инициализация Kafka consumer
 	kafkaConsumer := kafka.NewConsumer(cfg.BrokerConfig, log)
-	defer kafkaConsumer.Close()
 
 	// Проверка и создание топика Kafka
 	if err := kafka.EnsureTopicExists(cfg.BrokerConfig, log); err != nil {
 		log.Warn("Failed to ensure Kafka topic exists", zap.Error(err))
 	}
-	imageRepo := postgres.NewImageRepository(dbpool, log)
-	statsRepo := postgres.NewStatisticsRepository(dbpool, log)
+	imageRepo := postgres.NewImageRepository(dbpool)
+	statsRepo := postgres.NewStatisticsRepository(dbpool)
 
 	statsService := statsservice.NewStatsService(statsRepo, log)
 
@@ -94,21 +79,21 @@ func NewWorker(ctx context.Context, cfg *config.ServiceConfig, log *zap.Logger) 
 		cfg:          cfg,
 		log:          log,
 		consumer:     kafkaConsumer,
-		processor:    *imageProcessor,
+		processor:    imageProcessor,
 		imageRepo:    imageRepo,
 		statsRepo:    statsRepo,
 		cloudStorage: s3Client,
 		workService:  workerService,
 		numWorkers:   cfg.WorkerConfig.NumWorkers,
-		wg:           wg,
-		stopChan:     stopChan,
 	}, nil
 
 }
 
-func (w *Worker) Run() error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (w *Worker) Run(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
+	wg := &sync.WaitGroup{}
 
 	taskHandler := func(ctx context.Context, task *entity.ProcessingTask) error {
 		w.log.Info("Received task from Kafka",
@@ -129,11 +114,11 @@ func (w *Worker) Run() error {
 		return nil
 	}
 	for i := 0; i < w.numWorkers; i++ {
-		w.wg.Add(1)
+		wg.Add(1)
 		workerID := i + 1
 
 		go func(id int) {
-			defer w.wg.Done()
+			defer wg.Done()
 			w.log.Info("Worker started", zap.Int("workerId", id))
 
 			// Каждый воркер читает сообщения
@@ -152,37 +137,26 @@ func (w *Worker) Run() error {
 	w.log.Info("All workers started successfully")
 
 	// Мониторинг статистики Kafka consumer
+	wg.Add(1)
 	go func() {
-		ticker := time.NewTicker(30 * time.Second)
-		defer ticker.Stop()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				msg, byt := w.consumer.Stats()
-
-				w.log.Info("Kafka consumer stats",
-					zap.Int64("messages", msg),
-					zap.Int64("bytes", byt),
-				)
-			}
-		}
+		defer wg.Done()
+		w.monitorStats(ctx)
 	}()
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	w.log.Info("Shutting down workers...")
+	sig := <-quit
+
+	w.log.Info("Shutting down workers...", zap.String("signal", sig.String()))
+
 	cancel()
 
 	// Ждем завершения всех воркеров
 	done := make(chan struct{})
 	go func() {
-		w.wg.Wait()
+		wg.Wait()
 		close(done)
 	}()
 
@@ -199,4 +173,25 @@ func (w *Worker) Run() error {
 type workerServiceInterface interface {
 	ProcessTask(ctx context.Context, task *entity.ProcessingTask) error
 	ProcessTaskWithRetry(ctx context.Context, task *entity.ProcessingTask, maxRetries int) error
+}
+
+func (w *Worker) monitorStats(ctx context.Context) {
+	ticker := time.NewTicker(120 * time.Second)
+	defer ticker.Stop()
+
+	w.log.Info("Stats monitor started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			w.log.Info("Stats monitor stopped")
+			return
+		case <-ticker.C:
+			msg, byt := w.consumer.Stats()
+			w.log.Info("Kafka consumer stats",
+				zap.Int64("messages", msg),
+				zap.Int64("bytes", byt),
+			)
+		}
+	}
 }

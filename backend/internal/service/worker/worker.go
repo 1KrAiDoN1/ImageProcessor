@@ -1,6 +1,7 @@
 package workerservice
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"imageprocessor/backend/internal/domain/entity"
@@ -56,8 +57,17 @@ func (w *WorkerService) ProcessTask(ctx context.Context, task *entity.Processing
 			zap.String("taskId", task.ID),
 			zap.String("path", task.OriginalPath),
 		)
-		w.updateJobStatus(ctx, task.ID, "failed", err.Error())
-		w.updateImageStatus(ctx, task.ImageID, entity.StatusFailed)
+		err = w.updateJobStatus(ctx, task.ID, "failed", err.Error())
+		if err != nil {
+			w.logger.Error("Failed to update job status", zap.Error(err))
+		}
+		err = w.updateImageStatus(ctx, task.ImageID, entity.StatusFailed)
+		if err != nil {
+			w.logger.Error("Failed to update image status", zap.Error(err))
+		}
+		for _, op := range task.Operations {
+			_ = w.statsService.RecordImageFailed(ctx, op.Type, 0)
+		}
 		return fmt.Errorf("failed to download original image: %w", err)
 	}
 
@@ -73,9 +83,14 @@ func (w *WorkerService) ProcessTask(ctx context.Context, task *entity.Processing
 			zap.Error(err),
 			zap.String("taskId", task.ID),
 		)
-		w.updateJobStatus(ctx, task.ID, "failed", err.Error())
-		w.updateImageStatus(ctx, task.ImageID, entity.StatusFailed)
-
+		err = w.updateJobStatus(ctx, task.ID, "failed", err.Error())
+		if err != nil {
+			w.logger.Error("Failed to update job status", zap.Error(err))
+		}
+		err = w.updateImageStatus(ctx, task.ImageID, entity.StatusFailed)
+		if err != nil {
+			w.logger.Error("Failed to update image status", zap.Error(err))
+		}
 		// Записываем в статистику неудачную обработку
 		for _, op := range task.Operations {
 			_ = w.statsService.RecordImageFailed(ctx, op.Type, 0)
@@ -104,7 +119,7 @@ func (w *WorkerService) ProcessTask(ctx context.Context, task *entity.Processing
 
 		// Загружаем в S3
 		err = w.cloudStorage.UploadFile(ctx, processedPath,
-			newBytesReader(processedData),
+			bytes.NewReader(processedData),
 			int64(len(processedData)),
 			"image/jpeg")
 		if err != nil {
@@ -252,24 +267,4 @@ func getOperationParams(operations []entity.OperationParams, opType entity.Opera
 		}
 	}
 	return ""
-}
-
-// Простая реализация io.Reader
-type bytesReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *bytesReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, fmt.Errorf("EOF")
-	}
-
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
-}
-
-func newBytesReader(data []byte) *bytesReader {
-	return &bytesReader{data: data, pos: 0}
 }

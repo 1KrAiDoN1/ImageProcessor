@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"imageprocessor/backend/internal/config"
 	"imageprocessor/backend/internal/domain/entity"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 	"go.uber.org/zap"
@@ -26,6 +27,9 @@ func NewProducer(cfg config.BrokerConfig, logger *zap.Logger) *Producer {
 		RequiredAcks: kafka.RequireOne,
 		Async:        false,
 		Compression:  kafka.Snappy,
+		WriteTimeout: 100 * time.Millisecond, // Таймаут для записи, чтобы избежать задержек
+		BatchTimeout: 10 * time.Millisecond,  // Минимальный таймаут для батча
+		BatchSize:    1,                      // Отправлять сразу, без батчинга
 	}
 
 	logger.Info("Kafka producer initialized",

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"imageprocessor/backend/internal/domain/entity"
@@ -34,10 +35,21 @@ func NewHandler(log *zap.Logger, imageService ImageServiceInterface, statisticsS
 
 // UploadImage обрабатывает загрузку изображения с операциями
 func (h *Handler) UploadImage(c *gin.Context) {
-	h.logger.Info("Upload image request received")
-
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 	// Ограничиваем размер загружаемого файла
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxFileSize)
+
+	// Парсим multipart форму (максимум 32MB)
+	err := c.Request.ParseMultipartForm(maxFileSize)
+	if err != nil {
+		h.logger.Error("Failed to parse multipart form", zap.Error(err))
+		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
+			Error:   "invalid_request",
+			Message: "Failed to parse form: " + err.Error(),
+		})
+		return
+	}
 
 	// Получаем файл из формы
 	file, header, err := c.Request.FormFile("image")
@@ -49,7 +61,13 @@ func (h *Handler) UploadImage(c *gin.Context) {
 		})
 		return
 	}
-	defer file.Close()
+	h.logger.Info("Content-Type of file", zap.String("content_type", c.Request.Header.Get("Content-Type")))
+	defer func() {
+		err = file.Close()
+		if err != nil {
+			h.logger.Error("Failed to close file", zap.Error(err))
+		}
+	}()
 
 	// Читаем содержимое файла
 	imageData, err := io.ReadAll(file)
@@ -109,7 +127,7 @@ func (h *Handler) UploadImage(c *gin.Context) {
 	}
 
 	// Вызываем сервис для загрузки изображения
-	image, err := h.imageService.UploadImage(c.Request.Context(), imageData, header.Filename, mimeType, entityOperations)
+	image, err := h.imageService.UploadImage(ctx, imageData, header.Filename, mimeType, entityOperations)
 	if err != nil {
 		h.logger.Error("Failed to upload image", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
@@ -117,6 +135,13 @@ func (h *Handler) UploadImage(c *gin.Context) {
 			Message: "Failed to upload image: " + err.Error(),
 		})
 		return
+	}
+
+	// Записываем статистику загрузки
+	err = h.statisticsService.RecordImageUploaded(ctx, image.OriginalSize)
+	if err != nil {
+		h.logger.Warn("Failed to record image upload statistics", zap.Error(err))
+		// Не возвращаем ошибку, так как изображение уже загружено
 	}
 
 	h.logger.Info("Image uploaded successfully", zap.String("imageId", image.ID))
@@ -138,6 +163,8 @@ func (h *Handler) UploadImage(c *gin.Context) {
 
 // GetImage возвращает изображение по ID и операции
 func (h *Handler) GetImage(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 	imageID := c.Param("id")
 	if imageID == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
@@ -157,7 +184,7 @@ func (h *Handler) GetImage(c *gin.Context) {
 	)
 
 	// Получаем изображение из сервиса
-	imageData, mimeType, err := h.imageService.GetImage(c.Request.Context(), imageID, operation)
+	imageData, mimeType, err := h.imageService.GetImage(ctx, imageID, operation)
 	if err != nil {
 		h.logger.Error("Failed to get image", zap.Error(err), zap.String("imageId", imageID))
 		c.JSON(http.StatusNotFound, dto.ErrorResponse{
@@ -179,6 +206,9 @@ func (h *Handler) GetImage(c *gin.Context) {
 
 // GetImageStatus возвращает статус обработки изображения
 func (h *Handler) GetImageStatus(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
 	imageID := c.Param("id")
 	if imageID == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
@@ -191,7 +221,7 @@ func (h *Handler) GetImageStatus(c *gin.Context) {
 	h.logger.Debug("Get image status request", zap.String("imageId", imageID))
 
 	// Получаем статус из сервиса
-	status, err := h.imageService.GetImageStatus(c.Request.Context(), imageID)
+	status, err := h.imageService.GetImageStatus(ctx, imageID)
 	if err != nil {
 		h.logger.Error("Failed to get image status", zap.Error(err), zap.String("imageId", imageID))
 		c.JSON(http.StatusNotFound, dto.ErrorResponse{
@@ -217,6 +247,8 @@ func (h *Handler) GetImageStatus(c *gin.Context) {
 
 // DeleteImage удаляет изображение и все его версии
 func (h *Handler) DeleteImage(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 	imageID := c.Param("id")
 	if imageID == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
@@ -229,7 +261,7 @@ func (h *Handler) DeleteImage(c *gin.Context) {
 	h.logger.Info("Delete image request", zap.String("imageId", imageID))
 
 	// Удаляем изображение через сервис
-	err := h.imageService.DeleteImage(c.Request.Context(), imageID)
+	err := h.imageService.DeleteImage(ctx, imageID)
 	if err != nil {
 		h.logger.Error("Failed to delete image", zap.Error(err), zap.String("imageId", imageID))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
@@ -250,10 +282,12 @@ func (h *Handler) DeleteImage(c *gin.Context) {
 
 // GetStatistics возвращает общую статистику системы
 func (h *Handler) GetStatistics(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
 	h.logger.Debug("Get statistics request")
 
 	// Получаем статистику из сервиса
-	stats, err := h.statisticsService.GetDetailedStatistics(c.Request.Context())
+	stats, err := h.statisticsService.GetDetailedStatistics(ctx)
 	if err != nil {
 		h.logger.Error("Failed to get statistics", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{
@@ -292,6 +326,9 @@ func (h *Handler) GetStatistics(c *gin.Context) {
 
 // GetImagePresignedURL генерирует временную ссылку для скачивания изображения
 func (h *Handler) GetImagePresignedURL(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
 	imageID := c.Param("id")
 	if imageID == "" {
 		c.JSON(http.StatusBadRequest, dto.ErrorResponse{
@@ -318,7 +355,7 @@ func (h *Handler) GetImagePresignedURL(c *gin.Context) {
 
 	// Генерируем URL
 	url, err := h.imageService.GetImagePresignedURL(
-		c.Request.Context(),
+		ctx,
 		imageID,
 		operation,
 		time.Duration(expiry)*time.Second,
@@ -340,6 +377,9 @@ func (h *Handler) GetImagePresignedURL(c *gin.Context) {
 
 // ListImages возвращает список изображений с пагинацией
 func (h *Handler) ListImages(c *gin.Context) {
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 10*time.Second)
+	defer cancel()
+
 	limitStr := c.DefaultQuery("limit", "10")
 	offsetStr := c.DefaultQuery("offset", "0")
 
@@ -358,7 +398,7 @@ func (h *Handler) ListImages(c *gin.Context) {
 		zap.Int("offset", offset),
 	)
 
-	images, err := h.imageService.ListImages(c.Request.Context(), limit, offset)
+	images, err := h.imageService.ListImages(ctx, limit, offset)
 	if err != nil {
 		h.logger.Error("Failed to list images", zap.Error(err))
 		c.JSON(http.StatusInternalServerError, dto.ErrorResponse{

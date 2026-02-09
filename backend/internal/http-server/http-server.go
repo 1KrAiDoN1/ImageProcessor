@@ -57,7 +57,7 @@ func (s *Server) Run() error {
 }
 
 func (s *Server) Shutdown(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	s.logger.Info("Shutting down HTTP server...")
@@ -72,7 +72,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 func (s *Server) setupRoutes() {
 	// CORS middleware для работы с frontend
 	s.router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000"},
+		AllowOrigins:     []string{"http://localhost", "http://localhost:80", "http://localhost:8000", "http://localhost:3000", "http://127.0.0.1:8000", "*"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},

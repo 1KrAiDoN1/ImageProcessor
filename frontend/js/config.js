@@ -7,9 +7,10 @@
 const CONFIG = {
     // API Configuration
     api: {
-        // В production используем относительный путь (через nginx proxy)
-        // В development - прямое подключение к backend
-        baseURL: window.location.hostname === 'localhost' 
+        // В Docker окружении используем относительный путь через nginx proxy
+        // Nginx проксирует /api/* -> api:8080
+        // В development (порт 3000 или 8000) - прямое подключение к backend
+        baseURL: (window.location.port === '3000' || window.location.port === '8000')
             ? 'http://localhost:8080/api/v1' 
             : '/api/v1',
         timeout: 30000, // 30 seconds
@@ -69,4 +70,3 @@ Object.freeze(CONFIG);
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = CONFIG;
 }
-

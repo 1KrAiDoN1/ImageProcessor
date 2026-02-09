@@ -6,7 +6,7 @@ server:
 
 database:
   driver: "postgres"
-  host: "localhost"
+  host: "postgres"
   port: 5432
   user: "postgres"
   dbname: "imageprocessor"
@@ -17,7 +17,7 @@ database:
 
 broker:
   brokers:
-    - "localhost:9092"
+    - "kafka:9092"
   topic: "image-processing"
   consumerGroup: "image-processor-workers"
   sessionTimeout: 30s
@@ -36,10 +36,10 @@ worker:
   retryBackoff: 5s
 
 cloud:
-  endpoint: "localhost:9000"
+  endpoint: "minio:9000"
   region: "us-east-1"
-  accessKey: "minioadmin"
-  secretKey: "minioadmin"
+  accessKey: "${CLOUD_ACCESS_KEY}"
+  secretKey: "${CLOUD_SECRET_KEY}"
   bucket: "images"
   useSSL: false
   presignedURLExpiry: 3600s

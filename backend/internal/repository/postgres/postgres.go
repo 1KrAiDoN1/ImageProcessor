@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -12,18 +13,18 @@ type Storage struct {
 }
 
 func NewDatabase(ctx context.Context, databaseURL string) (*Storage, error) {
-	ctx, cancel := context.WithCancel(ctx)
+	ctxTO, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	config, err := pgxpool.ParseConfig(databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse database connection string: %w", err)
 	}
-	pool, err := pgxpool.NewWithConfig(ctx, config)
+	pool, err := pgxpool.NewWithConfig(ctxTO, config)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create connection pool: %w", err)
 	}
 
-	if err := pool.Ping(ctx); err != nil {
+	if err := pool.Ping(ctxTO); err != nil {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 	return &Storage{

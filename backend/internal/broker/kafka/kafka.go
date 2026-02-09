@@ -19,8 +19,12 @@ func EnsureTopicExists(cfg config.BrokerConfig, logger *zap.Logger) error {
 		logger.Error("Failed to connect to Kafka", zap.Error(err))
 		return fmt.Errorf("failed to connect to Kafka: %w", err)
 	}
-	defer conn.Close()
-
+	defer func() {
+		err = conn.Close()
+		if err != nil {
+			logger.Error("Failed to close Kafka connection", zap.Error(err))
+		}
+	}()
 	controller, err := conn.Controller()
 	if err != nil {
 		logger.Error("Failed to get controller", zap.Error(err))
@@ -32,7 +36,12 @@ func EnsureTopicExists(cfg config.BrokerConfig, logger *zap.Logger) error {
 		logger.Error("Failed to connect to controller", zap.Error(err))
 		return fmt.Errorf("failed to connect to controller: %w", err)
 	}
-	defer controllerConn.Close()
+	defer func() {
+		err = controllerConn.Close()
+		if err != nil {
+			logger.Error("Failed to close Kafka controller connection", zap.Error(err))
+		}
+	}()
 
 	// Получаем список топиков
 	partitions, err := controllerConn.ReadPartitions()
@@ -100,7 +109,12 @@ func CheckConnection(brokers []string, logger *zap.Logger) error {
 			)
 			return fmt.Errorf("failed to connect to broker %s: %w", broker, err)
 		}
-		defer conn.Close()
+		defer func() {
+			err = conn.Close()
+			if err != nil {
+				logger.Error("Failed to close Kafka connection", zap.Error(err))
+			}
+		}()
 
 		// Пытаемся получить метаданные
 		_, err = conn.ApiVersions()
@@ -125,7 +139,12 @@ func GetTopicMetadata(brokers []string, topic string, logger *zap.Logger) (*kafk
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Kafka: %w", err)
 	}
-	defer conn.Close()
+	defer func() {
+		err = conn.Close()
+		if err != nil {
+			logger.Error("Failed to close Kafka connection", zap.Error(err))
+		}
+	}()
 
 	partitions, err := conn.ReadPartitions(topic)
 	if err != nil {

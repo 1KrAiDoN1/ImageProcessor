@@ -195,4 +195,3 @@ class ImageProcessorAPI {
 
 // Экспорт API
 const api = new ImageProcessorAPI();
-

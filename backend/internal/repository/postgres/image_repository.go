@@ -9,18 +9,15 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"go.uber.org/zap"
 )
 
 type ImageRepository struct {
-	db     *pgxpool.Pool
-	logger *zap.Logger
+	db *pgxpool.Pool
 }
 
-func NewImageRepository(db *pgxpool.Pool, logger *zap.Logger) *ImageRepository {
+func NewImageRepository(db *pgxpool.Pool) *ImageRepository {
 	return &ImageRepository{
-		db:     db,
-		logger: logger,
+		db: db,
 	}
 }
 
@@ -44,11 +41,9 @@ func (r *ImageRepository) CreateImage(ctx context.Context, image *entity.Image) 
 	)
 
 	if err != nil {
-		r.logger.Error("Failed to create image", zap.Error(err), zap.String("imageId", image.ID))
 		return fmt.Errorf("failed to create image: %w", err)
 	}
 
-	r.logger.Info("Image created successfully", zap.String("imageId", image.ID))
 	return nil
 }
 
@@ -77,7 +72,6 @@ func (r *ImageRepository) GetImageByID(ctx context.Context, imageID string) (*en
 		if err == pgx.ErrNoRows {
 			return nil, fmt.Errorf("image not found: %s", imageID)
 		}
-		r.logger.Error("Failed to get image", zap.Error(err), zap.String("imageId", imageID))
 		return nil, fmt.Errorf("failed to get image: %w", err)
 	}
 
@@ -94,7 +88,6 @@ func (r *ImageRepository) UpdateImageStatus(ctx context.Context, imageID string,
 
 	result, err := r.db.Exec(ctx, query, status, time.Now(), imageID)
 	if err != nil {
-		r.logger.Error("Failed to update image status", zap.Error(err), zap.String("imageId", imageID))
 		return fmt.Errorf("failed to update image status: %w", err)
 	}
 
@@ -102,7 +95,6 @@ func (r *ImageRepository) UpdateImageStatus(ctx context.Context, imageID string,
 		return fmt.Errorf("image not found: %s", imageID)
 	}
 
-	r.logger.Info("Image status updated", zap.String("imageId", imageID), zap.String("status", string(status)))
 	return nil
 }
 
@@ -112,7 +104,6 @@ func (r *ImageRepository) DeleteImage(ctx context.Context, imageID string) error
 
 	result, err := r.db.Exec(ctx, query, imageID)
 	if err != nil {
-		r.logger.Error("Failed to delete image", zap.Error(err), zap.String("imageId", imageID))
 		return fmt.Errorf("failed to delete image: %w", err)
 	}
 
@@ -120,7 +111,6 @@ func (r *ImageRepository) DeleteImage(ctx context.Context, imageID string) error
 		return fmt.Errorf("image not found: %s", imageID)
 	}
 
-	r.logger.Info("Image deleted successfully", zap.String("imageId", imageID))
 	return nil
 }
 
@@ -135,7 +125,6 @@ func (r *ImageRepository) ListImages(ctx context.Context, limit, offset int) ([]
 
 	rows, err := r.db.Query(ctx, query, limit, offset)
 	if err != nil {
-		r.logger.Error("Failed to list images", zap.Error(err))
 		return nil, fmt.Errorf("failed to list images: %w", err)
 	}
 	defer rows.Close()
@@ -155,7 +144,6 @@ func (r *ImageRepository) ListImages(ctx context.Context, limit, offset int) ([]
 			&image.UpdatedAt,
 		)
 		if err != nil {
-			r.logger.Error("Failed to scan image row", zap.Error(err))
 			return nil, fmt.Errorf("failed to scan image: %w", err)
 		}
 		images = append(images, image)
@@ -190,18 +178,9 @@ func (r *ImageRepository) CreateProcessedImage(ctx context.Context, processed *e
 	)
 
 	if err != nil {
-		r.logger.Error("Failed to create processed image",
-			zap.Error(err),
-			zap.String("imageId", processed.ImageID),
-			zap.String("operation", string(processed.Operation)),
-		)
 		return fmt.Errorf("failed to create processed image: %w", err)
 	}
 
-	r.logger.Info("Processed image created",
-		zap.String("imageId", processed.ImageID),
-		zap.String("operation", string(processed.Operation)),
-	)
 	return nil
 }
 
@@ -216,7 +195,6 @@ func (r *ImageRepository) GetProcessedImagesByImageID(ctx context.Context, image
 
 	rows, err := r.db.Query(ctx, query, imageID)
 	if err != nil {
-		r.logger.Error("Failed to get processed images", zap.Error(err), zap.String("imageId", imageID))
 		return nil, fmt.Errorf("failed to get processed images: %w", err)
 	}
 	defer rows.Close()
@@ -239,12 +217,11 @@ func (r *ImageRepository) GetProcessedImagesByImageID(ctx context.Context, image
 			&processed.CreatedAt,
 		)
 		if err != nil {
-			r.logger.Error("Failed to scan processed image", zap.Error(err))
 			return nil, fmt.Errorf("failed to scan processed image: %w", err)
 		}
 
 		if err := json.Unmarshal(paramsJSON, &processed.Parameters); err != nil {
-			r.logger.Warn("Failed to unmarshal parameters", zap.Error(err))
+			return nil, fmt.Errorf("failed to unmarshal images: %w", err)
 		}
 
 		processedImages = append(processedImages, processed)
@@ -281,14 +258,13 @@ func (r *ImageRepository) GetProcessedImageByOperation(ctx context.Context, imag
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return nil, fmt.Errorf("processed image not found")
+			return nil, fmt.Errorf("processed image not found: %w", err)
 		}
-		r.logger.Error("Failed to get processed image", zap.Error(err))
 		return nil, fmt.Errorf("failed to get processed image: %w", err)
 	}
 
 	if err := json.Unmarshal(paramsJSON, &processed.Parameters); err != nil {
-		r.logger.Warn("Failed to unmarshal parameters", zap.Error(err))
+		return nil, fmt.Errorf("failed to unmarshal images: %w", err)
 	}
 
 	return &processed, nil
@@ -309,11 +285,9 @@ func (r *ImageRepository) CreateProcessingJob(ctx context.Context, job *entity.P
 	now := time.Now()
 	_, err = r.db.Exec(ctx, query, job.ID, job.ImageID, operationsJSON, now, now)
 	if err != nil {
-		r.logger.Error("Failed to create processing job", zap.Error(err), zap.String("jobId", job.ID))
 		return fmt.Errorf("failed to create processing job: %w", err)
 	}
 
-	r.logger.Info("Processing job created", zap.String("jobId", job.ID), zap.String("imageId", job.ImageID))
 	return nil
 }
 
@@ -321,14 +295,13 @@ func (r *ImageRepository) CreateProcessingJob(ctx context.Context, job *entity.P
 func (r *ImageRepository) UpdateProcessingJobStatus(ctx context.Context, jobID string, status string, errorMsg string) error {
 	query := `
 		UPDATE processing_jobs
-		SET status = $1, error_message = $2, updated_at = $3,
-		    completed_at = CASE WHEN $1 IN ('completed', 'failed') THEN $3 ELSE completed_at END
+		SET status = $1::varchar, error_message = $2, updated_at = $3,
+		    completed_at = CASE WHEN $1::varchar IN ('completed', 'failed') THEN $3 ELSE completed_at END
 		WHERE id = $4
 	`
 
 	_, err := r.db.Exec(ctx, query, status, errorMsg, time.Now(), jobID)
 	if err != nil {
-		r.logger.Error("Failed to update processing job status", zap.Error(err), zap.String("jobId", jobID))
 		return fmt.Errorf("failed to update processing job status: %w", err)
 	}
 

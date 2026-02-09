@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"imageprocessor/backend/internal/broker"
 	"imageprocessor/backend/internal/domain/entity"
 	"imageprocessor/backend/internal/repository/cloud"
 	"time"
@@ -13,26 +14,26 @@ import (
 )
 
 type ImageService struct {
-	imageRepo     ImageRepositoryInterface
-	cloudStorage  cloud.CloudStorageInterface
-	kafkaProducer KafkaProducer
-	logger        *zap.Logger
-	bucket        string
+	imageRepo             ImageRepositoryInterface
+	cloudStorage          cloud.CloudStorageInterface
+	producerMessageBroker broker.ProducerMessageBrokerInterface
+	logger                *zap.Logger
+	bucket                string
 }
 
 func NewImageService(
 	imageRepo ImageRepositoryInterface,
 	cloudStorage cloud.CloudStorageInterface,
-	kafkaProducer KafkaProducer,
+	producerMessageBroker broker.ProducerMessageBrokerInterface,
 	logger *zap.Logger,
 	bucket string,
 ) *ImageService {
 	return &ImageService{
-		imageRepo:     imageRepo,
-		cloudStorage:  cloudStorage,
-		kafkaProducer: kafkaProducer,
-		logger:        logger,
-		bucket:        bucket,
+		imageRepo:             imageRepo,
+		cloudStorage:          cloudStorage,
+		producerMessageBroker: producerMessageBroker,
+		logger:                logger,
+		bucket:                bucket,
 	}
 }
 
@@ -105,7 +106,7 @@ func (s *ImageService) UploadImage(ctx context.Context, imageData []byte, filena
 		}
 
 		// Публикуем задачу в Kafka
-		err = s.kafkaProducer.PublishProcessingTask(ctx, task)
+		err = s.producerMessageBroker.PublishProcessingTask(ctx, task)
 		if err != nil {
 			s.logger.Error("Failed to publish task to Kafka", zap.Error(err), zap.String("imageId", imageID))
 			// Не возвращаем ошибку, так как изображение уже загружено

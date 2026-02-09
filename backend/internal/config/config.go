@@ -10,7 +10,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func LoadServiceConfig(log *zap.Logger, configPath, dbPasswordPath string) (*ServiceConfig, error) {
+func LoadServiceConfig(log *zap.Logger, configPath, dbPasswordPath, cloudAccessKeyPath, cloudSecretKeyPath string) (*ServiceConfig, error) {
 	v := viper.New()
 	v.SetConfigType("yaml")
 	v.SetConfigFile(configPath)
@@ -29,12 +29,22 @@ func LoadServiceConfig(log *zap.Logger, configPath, dbPasswordPath string) (*Ser
 		log.Error("Error generating DSN for database connection", zaplogger.Err(err))
 		return &ServiceConfig{}, err
 	}
+
+	CloudAccessKey, CloudSecretKey, err := serviceConfig.GetCloudKeys(cloudAccessKeyPath, cloudSecretKeyPath)
+	if err != nil {
+		log.Error("Error getting cloud storage keys", zaplogger.Err(err))
+		return &ServiceConfig{}, err
+	}
+
 	serviceConfig.DbConfig.DBConn = dbConnStr
+	serviceConfig.CloudStorageConfig.AccessKey = CloudAccessKey
+	serviceConfig.CloudStorageConfig.SecretKey = CloudSecretKey
+
 	log.Info("Config", zap.Any("serviceConfig", serviceConfig))
 	return serviceConfig, nil
 }
 
-func (d ServiceConfig) DSN(log *zap.Logger, dbPasswordPath string) (string, error) {
+func (d *ServiceConfig) DSN(log *zap.Logger, dbPasswordPath string) (string, error) {
 	password := os.Getenv(dbPasswordPath)
 	if password == "" {
 		return "", fmt.Errorf("environment variable %s is not set", dbPasswordPath)
@@ -42,6 +52,15 @@ func (d ServiceConfig) DSN(log *zap.Logger, dbPasswordPath string) (string, erro
 
 	return fmt.Sprintf("%s://%s:%s@%s:%d/%s",
 		d.DbConfig.Driver, d.DbConfig.User, password, d.DbConfig.Host, d.DbConfig.Port, d.DbConfig.DBName), nil
+}
+
+func (d *ServiceConfig) GetCloudKeys(CloudAccessKeyPath, CloudSecretKeyPath string) (string, string, error) {
+	accessKey := os.Getenv(CloudAccessKeyPath)
+	secretKey := os.Getenv(CloudSecretKeyPath)
+	if accessKey == "" || secretKey == "" {
+		return "", "", fmt.Errorf("environment variables %s and/or %s are not set", CloudAccessKeyPath, CloudSecretKeyPath)
+	}
+	return accessKey, secretKey, nil
 }
 
 type ServiceConfig struct {
