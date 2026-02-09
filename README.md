@@ -1,4 +1,9 @@
 # Image Processor
+![Go Version](https://img.shields.io/badge/Go-1.21%2B-blue.svg)
+![Framework](https://img.shields.io/badge/Framework-Gin-green.svg)
+![Database](https://img.shields.io/badge/Database-PostgreSQL-blue.svg)
+![Kafka](https://img.shields.io/badge/Apache-Kafka-231F20.svg)
+![Docker](https://img.shields.io/badge/Docker-Supported-brightgreen.svg)
 
 Высокопроизводительный асинхронный сервис обработки изображений с использованием микросервисной архитектуры.
 
